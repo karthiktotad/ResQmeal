@@ -1,0 +1,21 @@
+# Google OAuth credentials
+credentials.json
+token.json
+
+# Environment variables
+.env
+
+# Intermediate files
+.tmp/
+.tmp/*
+
+# Web dependencies and build
+node_modules/
+dist/
+dist-ssr/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+
