@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { 
   Leaf, 
   Route as RouteIcon, 
@@ -26,9 +27,16 @@ import {
 import MapContainer from '../components/MapContainer';
 
 export default function LandingPage() {
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [isDonorModalOpen, setIsDonorModalOpen] = useState(false);
   const [stats, setStats] = useState({ meals: 0, people: 0, co2: 0, deliveries: 0 });
+
+  const getDashboardPath = () => {
+    if (profile?.role === 'volunteer') return '/dashboard/volunteer';
+    if (profile?.role === 'receiver') return '/dashboard/receiver';
+    return '/dashboard/donor';
+  };
 
   useEffect(() => {
     // Animate stats (count up effect)
@@ -63,6 +71,83 @@ export default function LandingPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#0F172A] text-[#F8FAFC] font-inter">
+      
+      {/* 🚀 PREMIUM NAVIGATION */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-[#0F172A]/80 backdrop-blur-xl border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-2 group cursor-pointer" onClick={() => navigate('/')}>
+            <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/20 group-hover:scale-110 transition-transform">
+              <Leaf size={24} />
+            </div>
+            <span className="text-xl font-black tracking-tight">ZeroWaste <span className="text-emerald-500">AI</span></span>
+          </div>
+
+          <div className="hidden md:flex items-center gap-8">
+            <Link to="/impact" className="text-sm font-bold text-slate-400 hover:text-white transition">Impact</Link>
+            <Link to="/about" className="text-sm font-bold text-slate-400 hover:text-white transition">How it Works</Link>
+            <div className="w-px h-4 bg-white/10" />
+            
+            {user ? (
+              // LOGGED IN STATE
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ color: '#94A3B8', fontSize: 13 }}>
+                  Hi, {profile?.full_name?.split(' ')[0] || 'User'}
+                </span>
+                <button
+                  onClick={() => navigate(getDashboardPath())}
+                  style={{
+                    background: '#16A34A',
+                    border: 'none',
+                    color: '#fff',
+                    padding: '9px 22px',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}>
+                  My Dashboard
+                </button>
+              </div>
+            ) : (
+              // LOGGED OUT STATE
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button
+                  onClick={() => navigate('/login')}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #334155',
+                    color: '#F8FAFC',
+                    padding: '9px 22px',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    cursor: 'pointer'
+                  }}>
+                  Sign In
+                </button>
+                <button
+                  onClick={() => navigate('/login')}
+                  style={{
+                    background: '#16A34A',
+                    border: 'none',
+                    color: '#fff',
+                    padding: '9px 22px',
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}>
+                  Get Started
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile Menu Icon */}
+          <button className="md:hidden p-2 text-slate-400">
+            <Activity size={24} />
+          </button>
+        </div>
+      </nav>
       
       {/* DONOR MODAL */}
       {isDonorModalOpen && (
@@ -116,17 +201,33 @@ export default function LandingPage() {
           
           <div className="flex flex-col sm:flex-row gap-5 justify-center items-center mb-6">
             <button 
-              onClick={() => setIsDonorModalOpen(true)}
+              onClick={() => {
+                if (user && profile?.role === 'donor') {
+                  navigate('/donor/upload');
+                } else if (user && profile?.role !== 'donor') {
+                  // Logged in but wrong role — go to their dashboard
+                  navigate(getDashboardPath());
+                } else {
+                  // Not logged in — go to login
+                  navigate('/login');
+                }
+              }}
               className="w-full sm:w-auto px-10 py-4 bg-[#16A34A] text-[#FFFFFF] font-bold text-lg rounded-xl shadow-[0_0_20px_rgba(22,163,74,0.3)] hover:bg-[#14532D] transition-all hover:scale-105"
             >
               Donate Food Now
             </button>
-            <Link 
-              to="/receiver/dashboard" 
+            <button 
+              onClick={() => {
+                if (user) {
+                  navigate(getDashboardPath());
+                } else {
+                  navigate('/login');
+                }
+              }}
               className="w-full sm:w-auto px-10 py-4 bg-transparent border-2 border-[#334155] text-[#F8FAFC] hover:border-[#F8FAFC] font-bold text-lg rounded-xl transition-all hover:scale-105"
             >
               Register as Receiver
-            </Link>
+            </button>
           </div>
           <p className="text-sm font-semibold text-[#16A34A] flex items-center justify-center gap-2 italic">
             <Leaf size={16} /> "One donation today can feed a life tonight."

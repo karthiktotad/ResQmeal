@@ -1,7 +1,7 @@
 export function SafetyScoreGauge({ score, classification, reason, confidence }: any) {
   const getColors = () => {
-    if (score >= 80) return { stroke: '#16A34A', text: '#86EFAC', bg: '#14532D', border: '#16A34A' };
-    if (score >= 50) return { stroke: '#EAB308', text: '#FDE047', bg: '#713F12', border: '#EAB308' };
+    if (score >= 70) return { stroke: '#16A34A', text: '#86EFAC', bg: '#14532D', border: '#16A34A' };
+    if (score >= 40) return { stroke: '#EAB308', text: '#FDE047', bg: '#713F12', border: '#EAB308' };
     return { stroke: '#EF4444', text: '#FCA5A5', bg: '#7F1D1D', border: '#EF4444' };
   };
 

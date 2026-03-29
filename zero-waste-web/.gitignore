@@ -22,3 +22,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Security & Sensitive config
+.env
+.env.local
+*.env*
+supabase_setup.sql
+supabase_expansion.sql
+
+# Large data & backup
+kaggle_dataset/
+*.zip
+model_calibration.json

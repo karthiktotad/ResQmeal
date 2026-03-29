@@ -1,9 +1,38 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { GoogleMap, useJsApiLoader, Marker, InfoWindow, DirectionsService, DirectionsRenderer } from '@react-google-maps/api';
+import React, { useEffect, useState } from 'react';
+import { MapContainer as LeafletMap, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import 'leaflet-routing-machine';
+
+// Fix for default marker icons not showing in React Leaflet
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+// Custom Icons for different types
+const getDivIcon = (color: string) => {
+  return L.divIcon({
+    className: 'custom-div-icon',
+    html: `<div style="background-color: ${color}; width: 16px; height: 16px; border-radius: 50%; border: 3px solid #1E293B; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+    popupAnchor: [0, -10]
+  });
+};
+
+const icons = {
+  donor: getDivIcon('#16A34A'), // Green
+  receiver: getDivIcon('#3B82F6'), // Blue
+  point: getDivIcon('#EAB308'), // Yellow
+  agent: getDivIcon('#F97316'), // Orange
+};
 
 interface MapMarker {
   id: string;
-  position: google.maps.LatLngLiteral;
+  position: { lat: number; lng: number };
   type: 'donor' | 'receiver' | 'point' | 'agent';
   title: string;
   details?: string;
@@ -11,111 +40,71 @@ interface MapMarker {
 }
 
 interface MapProps {
-  center?: google.maps.LatLngLiteral;
+  center?: { lat: number; lng: number };
   zoom?: number;
   markers?: MapMarker[];
-  showRoute?: { origin: google.maps.LatLngLiteral; destination: google.maps.LatLngLiteral };
+  showRoute?: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number } };
   onMarkerClick?: (marker: MapMarker) => void;
   className?: string;
 }
 
-const containerStyle = {
-  width: '100%',
-  height: '100%',
-  borderRadius: '1.5rem'
+const RoutingComponent = ({ showRoute }: { showRoute: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number } } }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!showRoute || !map) return;
+    
+    // Type assertions needed because leaflet-routing-machine isn't perfectly typed
+    const LRM = (L as any).Routing;
+    
+    if (!LRM) {
+      console.warn("Leaflet Routing Machine not loaded");
+      return;
+    }
+
+    const routingControl = LRM.control({
+      waypoints: [
+        L.latLng(showRoute.origin.lat, showRoute.origin.lng),
+        L.latLng(showRoute.destination.lat, showRoute.destination.lng)
+      ],
+      routeWhileDragging: false,
+      addWaypoints: false,
+      fitSelectedRoutes: true,
+      showAlternatives: false,
+      lineOptions: {
+        styles: [{ color: '#16A34A', weight: 6, opacity: 0.8 }]
+      },
+      createMarker: () => null, // Don't create default routing markers
+    }).addTo(map);
+
+    // Hide the routing instructions panel via DOM manipulation for cleaner UI
+    const container = routingControl.getContainer();
+    if (container) {
+      container.style.display = 'none';
+    }
+
+    return () => {
+      try {
+        if (map && routingControl) {
+          map.removeControl(routingControl);
+        }
+      } catch (e) {
+        // ignore unmount errors from routing machine
+      }
+    };
+  }, [map, showRoute]);
+
+  return null;
 };
 
-const darkThemeStyles: google.maps.MapTypeStyle[] = [
-  { elementType: "geometry", stylers: [{ color: "#212121" }] },
-  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
-  {
-    featureType: "administrative",
-    elementType: "geometry",
-    stylers: [{ color: "#757575" }],
-  },
-  {
-    featureType: "administrative.country",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#9e9e9e" }],
-  },
-  {
-    featureType: "administrative.land_parcel",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "administrative.locality",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#bdbdbd" }],
-  },
-  {
-    featureType: "poi",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#757575" }],
-  },
-  {
-    featureType: "poi.park",
-    elementType: "geometry",
-    stylers: [{ color: "#181818" }],
-  },
-  {
-    featureType: "poi.park",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#616161" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry.fill",
-    stylers: [{ color: "#2c2c2c" }],
-  },
-  {
-    featureType: "road",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#8a8a8a" }],
-  },
-  {
-    featureType: "road.arterial",
-    elementType: "geometry",
-    stylers: [{ color: "#373737" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "geometry",
-    stylers: [{ color: "#3c3c3c" }],
-  },
-  {
-    featureType: "road.highway.controlled_access",
-    elementType: "geometry",
-    stylers: [{ color: "#4e4e4e" }],
-  },
-  {
-    featureType: "road.local",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#616161" }],
-  },
-  {
-    featureType: "transit",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#757575" }],
-  },
-  {
-    featureType: "water",
-    elementType: "geometry",
-    stylers: [{ color: "#000000" }],
-  },
-  {
-    featureType: "water",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#3d3d3d" }],
-  },
-];
-
-const markerIcons = {
-  donor: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
-  receiver: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
-  point: "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png",
-  agent: "https://maps.google.com/mapfiles/kml/pal4/icon54.png" // Delivery truck icon
+const CenterUpdater = ({ center }: { center: { lat: number; lng: number } }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.setView(center, map.getZoom());
+    }
+  }, [center, map]);
+  return null;
 };
 
 const MapContainer: React.FC<MapProps> = ({ 
@@ -126,26 +115,11 @@ const MapContainer: React.FC<MapProps> = ({
   onMarkerClick,
   className 
 }) => {
-  const { isLoaded } = useJsApiLoader({
-    id: 'google-map-script',
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-  });
-
-  const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
-  const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
-  const [currentLocation, setCurrentLocation] = useState<google.maps.LatLngLiteral>(center);
-
-  const onLoad = useCallback((_map: google.maps.Map) => {
-    // Map instance available if needed
-  }, []);
-
-  const onUnmount = useCallback(() => {
-    // Cleanup if needed
-  }, []);
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number }>(center);
 
   // Use geolocation to center the map if no center is provided
   useEffect(() => {
-    if (navigator.geolocation) {
+    if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           setCurrentLocation({
@@ -158,106 +132,52 @@ const MapContainer: React.FC<MapProps> = ({
         }
       );
     }
-  }, []);
-
-  const directionsCallback = useCallback((result: google.maps.DirectionsResult | null, status: google.maps.DirectionsStatus) => {
-    if (status === 'OK' && result) {
-      setDirections(result);
-    } else {
-      console.error(`Error fetching directions: ${status}`);
-    }
-  }, []);
-
-  const options = useMemo(() => ({
-    styles: darkThemeStyles,
-    disableDefaultUI: false,
-    zoomControl: true,
-    mapTypeControl: false,
-    scaleControl: true,
-    streetViewControl: false,
-    rotateControl: false,
-    fullscreenControl: true,
-  }), []);
-
-  if (!isLoaded) {
-    return (
-      <div className={`w-full h-full min-h-[400px] flex items-center justify-center bg-[#1E293B] rounded-3xl animate-pulse ${className}`}>
-        <p className="text-[#94A3B8] font-bold">Loading Satellite Grid...</p>
-      </div>
-    );
-  }
+  }, []); // Only run once
 
   return (
-    <div className={`w-full h-full ${className}`}>
-      <GoogleMap
-        mapContainerStyle={containerStyle}
-        center={currentLocation}
-        zoom={zoom}
-        onLoad={onLoad}
-        onUnmount={onUnmount}
-        options={options}
+    <div className={`w-full h-full min-h-[400px] z-[0] relative ${className || ''}`}>
+      <LeafletMap 
+        center={[currentLocation.lat, currentLocation.lng]} 
+        zoom={zoom} 
+        style={{ height: '100%', width: '100%', borderRadius: '1.5rem', zIndex: 0 }}
+        zoomControl={false} // We can add it back manually if we want it placed elsewhere
       >
-        {/* Render Markers */}
+        <CenterUpdater center={currentLocation} />
+        
+        {/* CartoDB Dark Matter Base Map */}
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        />
+
         {markers.map((marker) => (
           <Marker
             key={marker.id}
-            position={marker.position}
-            icon={markerIcons[marker.type]}
-            onClick={() => {
-              setSelectedMarker(marker);
-              if (onMarkerClick) onMarkerClick(marker);
+            position={[marker.position.lat, marker.position.lng]}
+            icon={icons[marker.type]}
+            eventHandlers={{
+              click: () => {
+                if (onMarkerClick) onMarkerClick(marker);
+              },
             }}
-          />
+          >
+            <Popup className="custom-popup">
+              <div className="p-1 text-[#0F172A] min-w-[120px]">
+                <h4 className="font-bold border-b border-[#E2E8F0] pb-1 mb-1">{marker.title}</h4>
+                <p className="text-xs font-semibold capitalize text-[#64748B] mb-1">{marker.type}</p>
+                {marker.details && <p className="text-xs mb-1">{marker.details}</p>}
+                {marker.status && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#16A34A] text-white font-bold inline-block mt-1">
+                    {marker.status}
+                  </span>
+                )}
+              </div>
+            </Popup>
+          </Marker>
         ))}
 
-        {/* Selected Marker InfoWindow */}
-        {selectedMarker && (
-          <InfoWindow
-            position={selectedMarker.position}
-            onCloseClick={() => setSelectedMarker(null)}
-          >
-            <div className="p-2 text-[#0F172A]">
-              <h4 className="font-bold border-b border-[#E2E8F0] pb-1 mb-1">{selectedMarker.title}</h4>
-              <p className="text-xs font-semibold capitalize text-[#64748B] mb-1">{selectedMarker.type}</p>
-              {selectedMarker.details && <p className="text-xs mb-1">{selectedMarker.details}</p>}
-              {selectedMarker.status && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#16A34A] text-white font-bold">
-                  {selectedMarker.status}
-                </span>
-              )}
-            </div>
-          </InfoWindow>
-        )}
-
-        {/* Directions Service and Renderer */}
-        {showRoute && (
-          <>
-            <DirectionsService
-              options={{
-                origin: showRoute.origin,
-                destination: showRoute.destination,
-                travelMode: google.maps.TravelMode.DRIVING,
-              }}
-              callback={directionsCallback}
-            />
-            {directions && (
-              <DirectionsRenderer
-                options={{
-                  directions: directions,
-                  polylineOptions: {
-                    strokeColor: "#16A34A",
-                    strokeWeight: 6,
-                    strokeOpacity: 0.8,
-                  },
-                  markerOptions: {
-                    visible: false // We use our own markers
-                  }
-                }}
-              />
-            )}
-          </>
-        )}
-      </GoogleMap>
+        {showRoute && <RoutingComponent showRoute={showRoute} />}
+      </LeafletMap>
     </div>
   );
 };
