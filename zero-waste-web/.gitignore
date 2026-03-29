@@ -34,3 +34,5 @@ supabase_expansion.sql
 kaggle_dataset/
 *.zip
 model_calibration.json
+archive.zip
+archive.zip

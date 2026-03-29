@@ -1,49 +1,73 @@
-# ResQmeal - Web Application (React + Vite + Supabase)
+# React + TypeScript + Vite
 
-This is the main web application for **ResQmeal**, an AI-powered food waste reduction platform.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## 🚀 Getting Started
+Currently, two official plugins are available:
 
-1.  **Clone the Repo** (if you haven't already):
-    ```bash
-    git clone https://github.com/karthiktotad/ResQmeal.git
-    cd ResQmeal/zero-waste-web
-    ```
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-2.  **Install Dependencies**:
-    ```bash
-    npm install
-    ```
+## React Compiler
 
-3.  **Environment Setup**:
-    Create a `.env` file in this directory with the following variables:
-    ```bash
-    VITE_SUPABASE_URL=your_supabase_url
-    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-    ```
-    You can use `.env.example` as a template.
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-4.  **Database Migration**:
-    Run the following SQL scripts in your Supabase SQL Editor:
-    *   `supabase_setup.sql` (Core schema)
-    *   `supabase_expansion.sql` (Tracking and expanded mission features)
+## Expanding the ESLint configuration
 
-5.  **Run Development Server**:
-    ```bash
-    npm run dev
-    ```
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
 
-## 🛠️ Features
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
 
-*   **Donor Dashboard**: Post surplus food, track pickups live, AI safety classification.
-*   **Volunteer Dashboard**: Mission control, OSRM-based routing, real-time location broadcasting, OTP-only delivery verification.
-*   **Receiver Dashboard**: Active mission tracking, delivery OTP visibility, donation management.
-*   **Impact Tracking**: Visualize metrics and food waste reduction stats.
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
 
-## 🧱 Architecture
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+```
 
-This application is part of a larger 3-layer architecture. See the [root README.md](../README.md) for more details.
+You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
-## 📄 License
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+```
