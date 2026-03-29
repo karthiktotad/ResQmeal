@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Package, Clock, ShieldCheck, MapPin, TrendingUp, Filter } from 'lucide-react';
+import { Package, Clock, ShieldCheck, MapPin, TrendingUp, Filter, Navigation, CheckCircle2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export const ReceiverDashboard = () => {
   const { profile } = useAuth();
   const [pendingDonations, setPendingDonations] = useState<any[]>([]);
   const [accepting, setAccepting] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeDonations, setActiveDonations] = useState<any[]>([]);
+  const navigate = useNavigate();
 
   // Stats (some mock for UI)
   const stats = [
@@ -18,39 +21,50 @@ export const ReceiverDashboard = () => {
     { label: 'Safety Rating', value: '4.9/5', icon: ShieldCheck, color: '#EAB308' },
   ];
 
-  const fetchPendingDonations = async () => {
+  const fetchDonations = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    // Fetch pending
+    const { data: pending } = await supabase
       .from('donations')
       .select('*')
       .eq('status', 'pending')
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setPendingDonations(data);
+    if (pending) setPendingDonations(pending);
+
+    // Fetch accepted by me but not delivered yet
+    if (profile?.id) {
+      const { data: active } = await supabase
+        .from('donations')
+        .select('*')
+        .eq('accepted_by', profile.id)
+        .in('status', ['accepted', 'in_transit'])
+        .neq('status', 'delivered')
+        .order('accepted_at', { ascending: false });
+      
+      if (active) setActiveDonations(active);
     }
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchPendingDonations();
+    fetchDonations();
 
-    // Real-time subscription for new donations
     const channel = supabase
-      .channel('pending-donations-feed')
+      .channel('receiver-dashboard-updates')
       .on('postgres_changes', {
         event: '*', 
         schema: 'public', 
         table: 'donations' 
       }, () => {
-        fetchPendingDonations();
+        fetchDonations();
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [profile?.id]);
 
   const acceptDonation = async (donationId: string) => {
     setAccepting(donationId);
@@ -96,7 +110,7 @@ export const ReceiverDashboard = () => {
         } else if (error.code === 'PGRST116') {
           // No rows returned — already accepted by someone else
           alert('This donation was just accepted by another receiver.');
-          fetchPendingDonations();
+          fetchDonations();
         } else {
           alert(`Error accepting donation: ${error.message}`);
         }
@@ -106,14 +120,14 @@ export const ReceiverDashboard = () => {
 
       if (!data) {
         alert('This donation is no longer available.');
-        fetchPendingDonations();
+        fetchDonations();
         setAccepting(null);
         return;
       }
 
       // Success — refresh the list
       console.log('Donation accepted successfully:', data);
-      fetchPendingDonations();
+      fetchDonations();
 
     } catch (err: any) {
       console.error('Unexpected error:', err);
@@ -145,7 +159,7 @@ export const ReceiverDashboard = () => {
         return;
       }
 
-      fetchPendingDonations();
+      fetchDonations();
 
     } catch (err: any) {
       alert(`Error: ${err.message}`);
@@ -268,8 +282,54 @@ export const ReceiverDashboard = () => {
           </div>
         </div>
 
-        {/* Info Cards */}
+        {/* Info Cards & Active Tracking */}
         <div className="space-y-6">
+           {activeDonations.length > 0 && (
+             <div className="premium-glass p-6 rounded-3xl border border-blue-500/30 bg-blue-500/5">
+                <h4 className="text-white font-bold mb-4 flex items-center gap-2">
+                  <Navigation size={18} className="text-blue-400" />
+                  Active Deliveries
+                </h4>
+                <div className="space-y-4">
+                  {activeDonations.map((d) => (
+                    <div key={d.id} className="p-4 rounded-2xl bg-slate-900/50 border border-white/5">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-white font-bold text-sm">{d.food_name}</span>
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                          {d.pickup_status?.replace('_', ' ').toUpperCase() || 'ACCEPTED'}
+                        </span>
+                      </div>
+                      
+                      {d.pickup_status === 'picked_up' && (
+                        <button
+                          onClick={() => navigate(`/tracking/${d.id}`)}
+                          className="w-full mt-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs transition active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          <Navigation size={14} /> Track Volunteer
+                        </button>
+                      )}
+
+                      {d.delivery_otp && !d.otp_verified && (
+                        <div className="mt-4 p-3 rounded-xl bg-slate-950 border border-white/5 text-center">
+                          <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Delivery OTP</p>
+                          <p className="text-2xl font-black text-white tracking-[0.2em]">{d.delivery_otp}</p>
+                          <p className="text-[10px] text-emerald-400 mt-1 flex items-center justify-center gap-1">
+                            <ShieldCheck size={10} /> REQUIRED FOR VERIFICATION
+                          </p>
+                        </div>
+                      )}
+
+                      {d.otp_verified && (
+                        <div className="mt-3 text-emerald-400 text-xs font-bold flex items-center justify-center gap-1">
+                          <CheckCircle2 size={14} /> PICKUP VERIFIED
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+             </div>
+           )}
+
            <div className="premium-glass p-6 rounded-3xl bg-gradient-to-br from-indigo-500/10 to-transparent">
               <h4 className="text-white font-bold mb-4">Urgent Feeds</h4>
               <p className="text-slate-400 text-sm leading-relaxed mb-6">

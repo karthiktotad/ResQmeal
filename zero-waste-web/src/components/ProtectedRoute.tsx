@@ -28,6 +28,11 @@ export const ProtectedRoute = ({ children, allowedRoles }: Props) => {
     }
   }
 
+  // Incomplete profile – redirect to setup
+  if (!profile.profile_completed) {
+    return <Navigate to="/profile/setup" replace />;
+  }
+
   return <>{children}</>;
 };
 

@@ -14,7 +14,8 @@ import {
   Clock,
   CheckCircle2,
   Package,
-  MapPin
+  MapPin,
+  Navigation
 } from 'lucide-react';
 
 export const DonorDashboard = () => {
@@ -212,7 +213,7 @@ export const DonorDashboard = () => {
                       {/* Mini Stepper */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                         {[1, 2, 3, 4].map((step) => {
-                          const active = step <= 2; // Mocking step based on status
+                          const active = step <= (d.pickup_status === 'picked_up' ? 3 : d.pickup_status === 'volunteer_assigned' ? 2 : 1);
                           return (
                             <div key={step} style={{ 
                               flex: 1, borderRadius: 2, 
@@ -221,11 +222,26 @@ export const DonorDashboard = () => {
                           );
                         })}
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B', fontSize: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B', fontSize: 10, marginBottom: d.pickup_status === 'picked_up' ? 12 : 0 }}>
                         <span>PENDING</span>
-                        <span style={{ color: '#16A34A' }}>IN TRANSIT</span>
+                        <span style={{ color: d.pickup_status === 'picked_up' ? '#16A34A' : '#64748B' }}>IN TRANSIT</span>
                         <span>DELIVERED</span>
                       </div>
+
+                      {d.pickup_status === 'picked_up' && (
+                        <button
+                          onClick={() => navigate(`/tracking/${d.id}`)}
+                          style={{
+                            width: '100%', padding: '8px',
+                            background: '#1E3A5F', border: '1px solid #3B82F6',
+                            color: '#60A5FA', borderRadius: 8, fontSize: 11,
+                            fontWeight: 700, cursor: 'pointer', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center', gap: 6
+                          }}
+                        >
+                          <Navigation size={12} /> TRACK LIVE
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

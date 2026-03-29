@@ -9,6 +9,7 @@ interface Profile {
   role: 'donor' | 'volunteer' | 'receiver';
   phone?: string;
   city?: string;
+  profile_completed?: boolean;
 }
 
 interface AuthContextType {

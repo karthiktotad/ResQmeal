@@ -3,6 +3,9 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { useNearbyPickups } from '../../hooks/useNearbyPickups';
+import { RouteMap } from '../../components/RouteMap';
+import { DeliveryProof } from '../../components/DeliveryProof';
+import { MapPin, Navigation, Phone, X } from 'lucide-react';
 
 export const VolunteerDashboard = () => {
   const { profile, user } = useAuth();
@@ -15,6 +18,8 @@ export const VolunteerDashboard = () => {
   const [myActivePickup, setMyActivePickup] = useState<any | null>(null);
   const [radiusKm, setRadiusKm] = useState(15);
   const [isAvailable, setIsAvailable] = useState(true);
+  const [receiverProfile, setReceiverProfile] = useState<any | null>(null);
+  const [showDeliveryProof, setShowDeliveryProof] = useState(false);
 
   const { pickups, loading, newPickupAlert, isRadiusRelaxed, refetch } =
     useNearbyPickups(volunteerLat, volunteerLng, radiusKm);
@@ -57,8 +62,47 @@ export const VolunteerDashboard = () => {
       .in('pickup_status', ['volunteer_assigned', 'picked_up'])
       .maybeSingle();
     
-    if (data) setMyActivePickup(data);
+    if (data) {
+      setMyActivePickup(data);
+      fetchReceiverProfile(data.accepted_by);
+    } else {
+      setMyActivePickup(null);
+      setReceiverProfile(null);
+    }
   };
+
+  const fetchReceiverProfile = async (receiverId: string) => {
+    if (!receiverId) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('full_name, phone, receiver_lat, receiver_lng, receiver_address, receiver_landmark')
+      .eq('id', receiverId)
+      .single();
+    if (data) setReceiverProfile(data);
+  };
+
+  // BROADCAST LOCATION EFFECT
+  useEffect(() => {
+    if (!myActivePickup || !volunteerLat || !volunteerLng) return;
+    
+    // Only broadcast if in progress
+    const allowedStatuses = ['volunteer_assigned', 'picked_up'];
+    if (!allowedStatuses.includes(myActivePickup.pickup_status)) return;
+
+    const interval = setInterval(async () => {
+      // Upsert into live_locations
+      await supabase
+        .from('live_locations')
+        .upsert({
+          donation_id: myActivePickup.id,
+          volunteer_lat: volunteerLat,
+          volunteer_lng: volunteerLng,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'donation_id' });
+    }, 10000); // every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [myActivePickup?.id, volunteerLat, volunteerLng, myActivePickup?.pickup_status]);
 
   const toggleAvailability = async () => {
     const newStatus = !isAvailable;
@@ -106,28 +150,34 @@ export const VolunteerDashboard = () => {
   };
 
   const markPickedUp = async (donationId: string) => {
-    const { error } = await supabase
-      .from('donations')
-      .update({ pickup_status: 'picked_up' })
-      .eq('id', donationId)
-      .eq('volunteer_id', user?.id);
+    try {
+      const { error } = await supabase
+        .from('donations')
+        .update({ pickup_status: 'picked_up' })
+        .eq('id', donationId)
+        .eq('volunteer_id', user?.id);
 
-    if (!error) fetchMyActivePickup();
+      if (error) throw error;
+      fetchMyActivePickup();
+    } catch (err: any) {
+      alert(`Error picking up: ${err.message}`);
+    }
   };
 
   const markDelivered = async (donationId: string) => {
-    const { error } = await supabase
-      .from('donations')
-      .update({
-        pickup_status: 'delivered',
-        status: 'delivered'
-      })
-      .eq('id', donationId)
-      .eq('volunteer_id', user?.id);
+    try {
+      // Generate a simple 4-digit OTP if not exists
+      const otp = Math.floor(1000 + Math.random() * 9000).toString();
+      
+      const { error } = await supabase
+        .from('donations')
+        .update({ delivery_otp: otp })
+        .eq('id', donationId);
 
-    if (!error) {
-      setMyActivePickup(null);
-      fetchMyActivePickup();
+      if (error) throw error;
+      setShowDeliveryProof(true);
+    } catch (err: any) {
+      alert(`Error generating OTP: ${err.message}`);
     }
   };
 
@@ -358,7 +408,7 @@ export const VolunteerDashboard = () => {
         ))}
       </div>
 
-      {/* ACTIVE PICKUP CARD (if volunteer already accepted one) */}
+      {/* ACTIVE PICKUP CARD */}
       {myActivePickup && (
         <div style={{
           background: '#1E293B',
@@ -366,39 +416,50 @@ export const VolunteerDashboard = () => {
           borderRadius: 16, padding: '20px',
           marginBottom: 24
         }}>
-          <div style={{
-            display: 'flex', alignItems: 'center',
-            gap: 8, marginBottom: 12
-          }}>
-            <div style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: '#3B82F6',
-              boxShadow: '0 0 8px #3B82F6'
-            }} />
-            <span style={{
-              color: '#60A5FA', fontSize: 12,
-              fontWeight: 700, letterSpacing: '0.08em'
-            }}>
-              YOUR ACTIVE PICKUP
-            </span>
-          </div>
+          {/* MISSION ROUTE MAP */}
+          {(volunteerLat && volunteerLng && receiverProfile) && (
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <Navigation size={18} color="#3B82F6" />
+                <span style={{ color: '#F8FAFC', fontWeight: 700, fontSize: '14px', letterSpacing: '0.05em' }}>MISSION TRACKER</span>
+              </div>
+              <RouteMap 
+                volunteerPos={[volunteerLat, volunteerLng]}
+                donorPos={[myActivePickup.donor_lat, myActivePickup.donor_lng]}
+                receiverPos={[receiverProfile.receiver_lat, receiverProfile.receiver_lng]}
+                isPickedUp={myActivePickup.pickup_status === 'picked_up'}
+              />
+            </div>
+          )}
 
           <div style={{
             display: 'flex', justifyContent: 'space-between',
             alignItems: 'flex-start', flexWrap: 'wrap', gap: 12
           }}>
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{
                 color: '#F8FAFC', fontSize: 18,
                 fontWeight: 700, marginBottom: 4
               }}>
                 {myActivePickup.food_name}
               </div>
-              <div style={{ color: '#94A3B8', fontSize: 13 }}>
-                📍 {myActivePickup.location} · {myActivePickup.quantity} {myActivePickup.unit}
+              <div style={{ color: '#94A3B8', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <MapPin size={14} /> Pickup: {myActivePickup.location}
+                </span>
+                {receiverProfile && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#60A5FA', fontWeight: 600 }}>
+                    <MapPin size={14} /> Drop-off: {receiverProfile.receiver_address}
+                  </span>
+                )}
+                {receiverProfile?.receiver_landmark && (
+                  <span style={{ fontSize: 11, marginLeft: 20 }}>
+                    🏛 Landmark: {receiverProfile.receiver_landmark}
+                  </span>
+                )}
               </div>
               <div style={{
-                marginTop: 6,
+                marginTop: 8,
                 color: getExpiryColor(myActivePickup.expiry_estimate),
                 fontSize: 12, fontWeight: 600
               }}>
@@ -406,7 +467,20 @@ export const VolunteerDashboard = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {receiverProfile && (
+                <a 
+                  href={`tel:${receiverProfile.phone}`}
+                  style={{
+                    padding: '10px', borderRadius: 10,
+                    background: '#1E293B', border: '1px solid #334155',
+                    color: '#94A3B8', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    textDecoration: 'none'
+                  }}
+                >
+                  <Phone size={18} />
+                </a>
+              )}
               {myActivePickup.pickup_status === 'volunteer_assigned' && (
                 <button
                   onClick={() => markPickedUp(myActivePickup.id)}
@@ -430,11 +504,41 @@ export const VolunteerDashboard = () => {
                     color: '#86EFAC', fontSize: 13,
                     fontWeight: 700, cursor: 'pointer'
                   }}>
-                  🎉 Mark Delivered
+                  📦 Complete Delivery
                 </button>
               )}
             </div>
           </div>
+
+          {showDeliveryProof && (
+            <div style={{
+              position: 'fixed', inset: 0, zIndex: 10000,
+              background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(8px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '20px'
+            }}>
+              <div style={{ width: '100%', maxWidth: '450px', position: 'relative' }}>
+                <button 
+                  onClick={() => setShowDeliveryProof(false)}
+                  style={{
+                    position: 'absolute', top: -40, right: 0,
+                    background: 'none', border: 'none', color: '#94A3B8',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <X size={24} /> Close
+                </button>
+                <DeliveryProof 
+                  donationId={myActivePickup.id}
+                  onSuccess={() => {
+                    setShowDeliveryProof(false);
+                    setMyActivePickup(null);
+                    fetchMyActivePickup();
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

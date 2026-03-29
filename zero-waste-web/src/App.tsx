@@ -14,8 +14,10 @@ import { ReceiverDashboard } from './pages/dashboard/ReceiverDashboard';
 
 // Other existing pages
 import UploadPage from './pages/donor/UploadPage';
+import ProfileSetup from './pages/profile/ProfileSetup';
 import ImpactPage from './pages/ImpactPage';
 import TrackPage from './pages/TrackPage';
+import { LiveTrackPage } from './pages/tracking/LiveTrackPage';
 
 function App() {
   return (
@@ -25,6 +27,7 @@ function App() {
           <Routes>
             {/* Public routes */}
             <Route path="/" element={<LandingPage />} />
+            <Route path="/profile/setup" element={<ProfileSetup />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/impact" element={<ImpactPage />} />
@@ -55,6 +58,7 @@ function App() {
 
             {/* Track page */}
             <Route path="/track/:foodId" element={<TrackPage />} />
+            <Route path="/tracking/:donationId" element={<LiveTrackPage />} />
 
             {/* Catch all — redirect to home */}
             <Route path="*" element={<Navigate to="/" replace />} />

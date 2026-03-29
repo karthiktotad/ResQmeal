@@ -10,6 +10,7 @@ import {
   CheckCircle2, 
   Sparkles
 } from 'lucide-react';
+import LocationPicker from '../../components/LocationPicker';
 
 // STEP 3 — SUCCESS CONFIRMATION (replaces recipient selection)
 const SubmissionSuccess = ({ donationId, foodName, safetyScore }: { donationId: string, foodName: string, safetyScore: number }) => (
@@ -67,7 +68,9 @@ const SubmissionSuccess = ({ donationId, foodName, safetyScore }: { donationId: 
         display: 'flex', justifyContent: 'space-between',
         alignItems: 'center', marginBottom: 8
       }}>
-        <span style={{ color: '#64748B', fontSize: 13 }}>Status</span>
+        <span style={{ color: '#64748B', fontSize: 13 }}>
+          Status
+        </span>
         <span style={{
           background: '#EAB30822', color: '#FDE047',
           padding: '3px 10px', borderRadius: 99,
@@ -124,18 +127,22 @@ export default function UploadPage() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [donationId, setDonationId] = useState('');
-  
+
   const [formData, setFormData] = useState({
-    name: '', type: 'veg', quantity: '', unit: 'kg', prepTime: '', location: '',
-    lat: null as number | null, lng: null as number | null
+    name: '', type: 'veg', quantity: '', unit: 'kg', prepTime: '', location: ''
   });
+
+  // New location state
+  const [donorLat, setDonorLat] = useState<number | null>(null);
+  const [donorLng, setDonorLng] = useState<number | null>(null);
+  const [pickupAddress, setPickupAddress] = useState('');
+  const [pickupLandmark, setPickupLandmark] = useState('');
+  const [locationConfirmed, setLocationConfirmed] = useState(false);
 
   const [aiResult, setAiResult] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const handleCapture = (img: string) => setPhoto(img);
-
-
 
   const uploadFoodImage = async (capturedImage: string): Promise<string> => {
     try {
@@ -206,7 +213,7 @@ Respond ONLY in valid JSON:
   "classification": "<Human Safe|Animal Safe|Unsafe>",
   "reason": "<what you SEE in the image, specific visual observations>",
   "confidence": "<High|Medium|Low>",
-  "red_flags": ["<concerning visual signs>"],
+  "red_flags": ["<concerning visual signs>"] ,
   "fresh_indicators": ["<positive signs>"]
 }`;
 
@@ -241,7 +248,7 @@ Respond ONLY in valid JSON:
 
     if (flags.includes('mold')) score = Math.min(score, 25);
     if (flags.includes('brown')) score = Math.min(score, 45);
-    
+
     classification = score >= 80 ? 'Human Safe' : score >= 50 ? 'Animal Safe' : 'Unsafe';
     return { ...result, score, classification };
   };
@@ -250,9 +257,9 @@ Respond ONLY in valid JSON:
     setIsAnalyzing(true);
     try {
       const processedBase64 = await preprocessImageForAI(imageData);
-      
+
       const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-      
+
       if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
         console.warn("Anthropic API key is missing. Using high-quality mock for demonstration.");
         await new Promise(r => setTimeout(r, 1500));
@@ -297,7 +304,6 @@ Respond ONLY in valid JSON:
       return applyScoreSanityCheck(JSON.parse(text));
     } catch (err: any) {
       console.error('AI Analysis Failed:', err);
-      // Return a safe fallback so the app don't crash
       return {
         score: 0,
         classification: 'Unsafe',
@@ -312,7 +318,9 @@ Respond ONLY in valid JSON:
   const handleNextSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!photo) return alert("Photo is mandatory");
-    
+    if (!locationConfirmed || donorLat === null || donorLng === null) {
+      return alert('Please select a pickup location on the map before proceeding.');
+    }
     setStep(2);
     try {
       const result = await analyzeFood(photo);
@@ -332,7 +340,7 @@ Respond ONLY in valid JSON:
     try {
       const imageUrl = photo ? await uploadFoodImage(photo) : '';
       const dbClassification = safetyResult.classification.toLowerCase().replace(/\s+/g, '_');
-      
+
       const { data, error } = await supabase.from('donations').insert({
         donor_id: user?.id,
         food_name: formData.name,
@@ -340,9 +348,11 @@ Respond ONLY in valid JSON:
         quantity: formData.quantity,
         unit: formData.unit,
         prepared_at: formData.prepTime || new Date().toISOString(),
-        location: formData.location,
-        lat: formData.lat || null,
-        lng: formData.lng || null,
+        location: pickupAddress,
+        lat: donorLat,
+        lng: donorLng,
+        pickup_address: pickupAddress,
+        pickup_landmark: pickupLandmark,
         image_url: imageUrl,
         safety_score: safetyResult.score,
         classification: dbClassification,
@@ -386,8 +396,7 @@ Respond ONLY in valid JSON:
           <div key={s} className="flex items-center flex-1 last:flex-none">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-500
               ${step === s ? 'bg-[#16A34A] text-[#FFFFFF] ring-4 ring-[#16A34A]/20 shadow-[0_0_20px_rgba(22,163,74,0.4)] scale-110' : 
-                step > s ? 'bg-[#14532D] text-[#86EFAC]' : 'bg-[#334155] text-[#94A3B8]'}`}
-            >
+                step > s ? 'bg-[#14532D] text-[#86EFAC]' : 'bg-[#334155] text-[#94A3B8]'}`}>
               {step > s ? <CheckCircle2 size={24}/> : (s === 3 ? "✓" : s)}
             </div>
             {s < 3 && (
@@ -399,18 +408,17 @@ Respond ONLY in valid JSON:
 
       <div className="bg-[#1E293B]/80 backdrop-blur-xl rounded-[2.5rem] shadow-2xl overflow-hidden border border-[#334155]">
         <div className="p-8 sm:p-12">
-          
           {step === 1 && (
             <form onSubmit={handleNextSubmit} className="space-y-8">
               <div className="space-y-4">
                 <label className="text-xs font-black uppercase tracking-widest text-[#16A34A] block">01 / LIVE PHOTO CHECK</label>
                 <div className="rounded-3xl overflow-hidden border-2 border-[#16A34A]/20 shadow-inner bg-[#0F172A]">
-                   <LiveCamera onCapture={handleCapture} />
+                  <LiveCamera onCapture={handleCapture} />
                 </div>
                 {photo && (
-                   <p className="text-center text-[#16A34A] text-sm font-bold flex items-center justify-center gap-2">
-                     <CheckCircle2 size={16} /> Photo Captured
-                   </p>
+                  <p className="text-center text-[#16A34A] text-sm font-bold flex items-center justify-center gap-2">
+                    <CheckCircle2 size={16} /> Photo Captured
+                  </p>
                 )}
               </div>
 
@@ -445,10 +453,17 @@ Respond ONLY in valid JSON:
 
                   <div>
                     <label className="block text-sm font-bold text-[#94A3B8] mb-3 flex items-center gap-2"><MapPin size={16}/> Business/Pickup Location *</label>
-                    <div className="relative">
-                      <input required type="text" className="w-full bg-[#0F172A] text-[#F8FAFC] border-[#334155] rounded-2xl h-14 pl-6 pr-14 border focus:border-[#16A34A] transition-all" placeholder="Search address..." value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} />
-                      <button type="button" className="absolute right-4 top-1/2 -translate-y-1/2 text-[#16A34A] bg-[#16A34A]/10 p-2 rounded-xl border border-[#16A34A]/20"><Navigation size={18}/></button>
-                    </div>
+                    <LocationPicker
+                      onLocationSelect={(lat, lng, address) => {
+                        setDonorLat(lat);
+                        setDonorLng(lng);
+                        setPickupAddress(address);
+                        setLocationConfirmed(true);
+                      }}
+                      initialLat={donorLat ?? undefined}
+                      initialLng={donorLng ?? undefined}
+                    />
+                    <input type="text" placeholder="Optional landmark (e.g., near the back door)" value={pickupLandmark} onChange={e => setPickupLandmark(e.target.value)} className="w-full mt-2 bg-[#0F172A] text-[#F8FAFC] border-[#334155] rounded-2xl h-12 px-4 focus:border-[#16A34A] transition-all" />
                   </div>
                 </div>
 
@@ -493,8 +508,7 @@ Respond ONLY in valid JSON:
                       <button 
                         onClick={() => submitDonation(aiResult)} 
                         disabled={isSubmitting}
-                        className="flex-1 py-4 text-white bg-[#16A34A] hover:bg-[#15803D] rounded-2xl font-bold shadow-xl transition-all flex items-center justify-center gap-2"
-                      >
+                        className="flex-1 py-4 text-white bg-[#16A34A] hover:bg-[#15803D] rounded-2xl font-bold shadow-xl transition-all flex items-center justify-center gap-2">
                         {isSubmitting ? <Loader2 className="animate-spin" size={20} /> : "Proceed to Fulfillment"}
                       </button>
                     )}
@@ -503,7 +517,6 @@ Respond ONLY in valid JSON:
               )}
             </div>
           )}
-
         </div>
       </div>
 

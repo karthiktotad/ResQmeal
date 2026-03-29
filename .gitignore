@@ -8,6 +8,11 @@ token.json
 # Intermediate files
 .tmp/
 .tmp/*
+*.zip
+archive.zip
+directives.zip
+skills.zip
+execution.zip
 
 # Web dependencies and build
 node_modules/
